@@ -3,21 +3,42 @@ package cliente;
 import javafx.fxml.FXML;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
+import javafx.application.Platform;
 import javafx.event.ActionEvent;
 
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import java.io.*;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
 
 public class Controller {
-    @FXML private Label label;
+    @FXML private Label label_resultado;
     @FXML private TextField operacionField;
 
-    public void initialize() {
-        label.setText("Hello, JavaFX " + ".");
+    //get the localhost IP address 
+    public InetAddress host;
+    public Socket socket = null;
+    public ObjectOutputStream oos = null;
+    public ObjectInputStream ois = null;
+
+    public int nodo_port = 3332;
+
+    public void initialize() throws IOException, ClassNotFoundException {
+        label_resultado.setText("");
+
+        //get the localhost IP address
+        host = InetAddress.getLocalHost();
+        
+        // Create socket
+        socket = new Socket(host.getHostName(), nodo_port);
+        System.out.println("[cliente] Conexion establecida con nodo: " + Integer.toString(nodo_port));
+        
+        //Objects OI Stream
+        oos = new ObjectOutputStream(socket.getOutputStream());
+        ois = new ObjectInputStream(socket.getInputStream());
+
+        //Listening thread ObjectInputStream
+        t.start();
     }
 
     @FXML
@@ -28,38 +49,43 @@ public class Controller {
 
         //operacion should not contain other symbols than */+- and numbers
         if(!operacion.matches(".*[a-zA-Z].*")){
-            //get the localhost IP address
-            InetAddress host = InetAddress.getLocalHost();
-            Socket socket = null;
-            ObjectOutputStream oos = null;
-            ObjectInputStream ois = null;
-
-            //create socket connection
-            socket = new Socket(host.getHostName(), 9876);
-
-            //write to socket using ObjectOutputStream
-            oos = new ObjectOutputStream(socket.getOutputStream());
-            System.out.println("Sending request to Socket Server");
             
-            //oos.writeObject("exit");
-            oos.writeObject(operacion);
-
-            //read the server response message
-            ois = new ObjectInputStream(socket.getInputStream());
-            String message = (String) ois.readObject();
-            System.out.println("respuesta: " + message);
-
-            //close resources
-            ois.close();
-            oos.close();
-            Thread.sleep(100);
-
-            label.setText(message);
+            // write to socket using ObjectOutputStream
+            System.out.println("[cliente] Enviando datos al nodo: " + "operacion,"+operacion);
+            oos.writeObject("operacion,"+operacion);
+            
         }
         else {
-            label.setText("Error en la expresión");
+            label_resultado.setText("Error en la expresión");
         }
         
     }
 
+
+    Thread t = new Thread(() -> {
+        //Here write all actions that you want execute on background
+        while(true){
+            
+            String message;
+            try {
+                System.out.println("[cliente] esperando respuesta... ");
+
+                message = (String) ois.readObject();
+                System.out.println("[cliente] Respuesta recibida: " + message);
+    
+                String parts[] = message.split(","); // {type of message},{content}
+        
+                if(parts[0].equals("resultado")){
+                    Platform.runLater(() -> {
+                        label_resultado.setText(parts[1]);
+                    });
+                }
+                
+            } catch (ClassNotFoundException | IOException e) {
+                e.printStackTrace();
+            }
+            
+        }
+        
+    });
 }
