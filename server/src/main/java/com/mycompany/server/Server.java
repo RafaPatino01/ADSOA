@@ -43,7 +43,7 @@ public class Server {
             String message = (String) ois.readObject();
             
             System.out.println("[server] Mensaje recibido: " + message);
-            
+
             String parts[] = message.split(","); // {type of message},{content}
 
             if(parts[0].equals("operacion")){
