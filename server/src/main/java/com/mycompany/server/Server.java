@@ -24,15 +24,30 @@ public class Server {
     //socket server port on which it will listen
     private static int nodo_port = 3332;
     
-    public static void main(String args[]) throws IOException, ClassNotFoundException{
+    public static void main(String args[]) throws IOException, ClassNotFoundException, InterruptedException{
         
         host = InetAddress.getLocalHost();
-        socket = new Socket(host.getHostName(), nodo_port);
-        System.out.println("[server] Conexion establecida con nodo: " + Integer.toString(nodo_port));
+        System.out.println("[server] Buscando conexión con nodo... ");
         
-        //read write from ObjectInputStream ObjectOutputStream objects
-        ObjectInputStream ois = new ObjectInputStream(socket.getInputStream());
-        ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
+        boolean socket_connection = false;
+        while(!socket_connection){
+            try {
+                nodo_port = getRandomNumber(3000,3100);
+                socket = new Socket(host.getHostName(), nodo_port);
+                System.out.println("[server] Conexion establecida con nodo: " + Integer.toString(nodo_port));
+                socket_connection = true;
+                
+                //Objects OI Stream
+                oos = new ObjectOutputStream(socket.getOutputStream());
+                ois = new ObjectInputStream(socket.getInputStream());
+
+                //Indicate that this is a server
+                oos.writeObject("tipo-server");
+            }
+            catch(Exception e){
+                //nothing happens
+            }
+        }
         
         //keep listens indefinitely until receives 'exit' call or program terminates
         while(true){
@@ -47,14 +62,15 @@ public class Server {
             String parts[] = message.split(","); // {type of message},{content}
 
             if(parts[0].equals("operacion")){
-                System.out.println("[server] Evaluando expresion recibida: " + parts[1]);
+                System.out.println("[server] Evaluando expresión recibida: " + parts[1]);
                 
                 // solve expression from message
                 Expression expression = new ExpressionBuilder(parts[1]).build();
                 double result = expression.evaluate();
 
                 //write object to Socket
-                oos.writeObject("resultado,"+Double.toString(result)); // {type of message},{content}
+                // {type of message},{content},{flag},{id_hash}
+                oos.writeObject("resultado,"+Double.toString(result)+",0,"+parts[3]); 
                 System.out.println("[server] Resultado enviado: " + result);
             }
             
@@ -67,5 +83,9 @@ public class Server {
         oos.close();
         socket.close();
         
+    }
+    
+    public static int getRandomNumber(int min, int max) {
+        return (int) ((Math.random() * (max - min)) + min);
     }
 }

@@ -1,18 +1,13 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Project/Maven2/JavaApp/src/main/java/${packagePath}/${mainClassName}.java to edit this template
- */
-
 package com.mycompany.nodo;
 
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.net.ConnectException;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  *
@@ -20,52 +15,109 @@ import java.util.logging.Logger;
  */
 public class Nodo {
     
+    public static InetAddress host;
     private static ServerSocket nodo_socket;
     private static int port = 3332;
     
-    public static ArrayList<Socket> activeClients = new ArrayList<Socket>();
-    public static ArrayList<ObjectOutputStream> activeOutputStreams = new ArrayList<ObjectOutputStream>();
+    public static ArrayList<Socket> active_connections = new ArrayList<Socket>();
+    public static ArrayList<ObjectOutputStream> active_output_streams = new ArrayList<ObjectOutputStream>();
     
-    public static void main(String[] args)
+    public static int port_min = 3000;
+    public static int port_max = 3100;
+    
+    public static void main(String[] args) throws ClassNotFoundException
     {
-        ServerSocket nodo_socket = null;
-        // Lista de contratos
+        
+        ServerSocket nodo_server_socket = null;
+        
+        // Find other NODES that are already running
+        for (int i = port_min; i < port_max; i++) {
+            try {
+                //Create socket
+                host = InetAddress.getLocalHost();
+                Socket s = new Socket(host.getHostName(), i);
+                
+                
+                //Indicate that this is a node searching for a free port
+                ObjectOutputStream oos = new ObjectOutputStream(s.getOutputStream());  
+                oos.writeObject("tipo-nodo");
+                
+                ObjectInputStream ois = new ObjectInputStream(s.getInputStream());
+                System.out.println("Conexión establecida con Nodo: " + i + " | (Mensaje): " + ois.readObject());
+                
+                // create handler
+                NodeHandler nodoSock = new NodeHandler(s, oos, ois);
+                new Thread(nodoSock).start();
+                
+                //oos.close();??????????
+                //ois.close();
+                //s.close();
+                
+            } catch(ConnectException e) {
+                //If connection was not possible the port is available
+                System.out.println("Puerto disponible encontrado: " + i);
+                try {
+                    //Create a server socket to listen this port
+                   nodo_server_socket = new ServerSocket(i);
+                   port = i;
+                   break;
+                } catch (IOException ex) {
+                    System.out.println(ex);
+                }
+                break;
+            } catch (Exception e) {
+                System.out.println(e);
+            }
+        
+        }
         
         try {
   
-            nodo_socket = new ServerSocket(port);
+            // nodo_socket = new ServerSocket(port); 
+            // cuando encontró un socket disponible para ofertar conexión
+            nodo_socket = nodo_server_socket;
             nodo_socket.setReuseAddress(true);
   
-            // running infinite loop for getting
-            // client request
+            // ---- HANDLE Connections to this node ----
             while (true) {
-  
-                if(activeClients == null){
+                
+                if(active_connections.isEmpty()){
                     System.out.println("[nodo] Esperando conexiones en el puerto: " + Integer.toString(port));
                 }
                 else {
-                    System.out.println("[nodo] Conexiones actuales: ");
-                    System.out.println(activeClients);
+                    System.out.println("[nodo] Conexiones actuales: " + "("+ Integer.toString(active_connections.size()) +") " + active_connections);
                 }
                 
-                // socket object to receive incoming client
-                // requests
-                Socket client = nodo_socket.accept();
-  
-                // Displaying that new client is connected
-                // to server
-                System.out.println("[nodo] Nueva conexion: " + client.getRemoteSocketAddress());
-  
+                // socket object to receive incoming client requests
+                System.out.println("[nodo] Esperando conexiones en el puerto: " + Integer.toString(port));
+                Socket connection = nodo_socket.accept();
                 
-                // create a new thread object
-                ClientHandler clientSock = new ClientHandler(client);
-  
-                // This thread will handle the client
-                // separately
+                // Respond to this connection
+                ObjectOutputStream temp_oos = new ObjectOutputStream(connection.getOutputStream());
+                ObjectInputStream temp_ois = new ObjectInputStream(connection.getInputStream());
                 
-                activeClients.add(client);
+                String recieved_msg = (String) temp_ois.readObject();
                 
-                new Thread(clientSock).start();
+                if(recieved_msg.equals("tipo-nodo")){
+                    temp_oos.writeObject("quehubo bro");
+                    System.out.println("[nodo] Nueva conexion nodo: " + connection.getRemoteSocketAddress());
+
+                    // Handle connection with another node
+                    NodeHandler nodoSock = new NodeHandler(connection, temp_oos, temp_ois);
+                    
+                    new Thread(nodoSock).start();
+                } 
+                else{
+                    temp_oos.writeObject("quehubo bro");
+                    System.out.println("[nodo] Nueva conexion cliente/server: " + connection.getRemoteSocketAddress());
+                    // create a new thread object
+                    NodeHandler clientSock = new NodeHandler(connection, temp_oos, temp_ois);
+
+                    // This thread will handle the client
+                    // separately
+                    new Thread(clientSock).start();
+                }
+                
             }
         }
         catch (IOException e) {
@@ -82,54 +134,4 @@ public class Nodo {
             }
         }
     }
-    
-    private static class ClientHandler implements Runnable {
-        private final Socket clientSocket;
-        private final ObjectOutputStream oos;
-        private final ObjectInputStream ois;
-        // Constructor
-        public ClientHandler(Socket socket) throws IOException
-        {
-            this.clientSocket = socket;
-            this.oos = new ObjectOutputStream(socket.getOutputStream());
-            this.ois = new ObjectInputStream(socket.getInputStream());
-            activeOutputStreams.add(oos); // add oos a la lista
-        }
-  
-        public void run()
-        {
-            try {
-                
-                while(true){
-                    
-                    //convert ObjectInputStream object to String
-                    String message = (String) ois.readObject();
-                    System.out.println("[nodo] (" + clientSocket.getRemoteSocketAddress() + ") Mensaje recibido: " + message);
-                    
-                    // Broadcast to all active clients
-                    for (int i = 0; i < activeOutputStreams.size(); i++) 
-                    {
-                        ObjectOutputStream temp_oos = activeOutputStreams.get(i);
-                        
-                        if(temp_oos != oos){
-                            temp_oos.writeObject(message);
-                            System.out.println("[nodo] Enviando mensaje: " + message + " a " + activeClients.get(i));
-                        }
-                    }
-
-                }
-                
-            }
-            catch (IOException e) {
-                System.out.println("*[nodo] Conexion finalizada con: " + clientSocket.getRemoteSocketAddress());
-                
-                activeClients.remove(clientSocket);
-                activeOutputStreams.remove(oos);
-                
-            } catch (ClassNotFoundException ex) {
-                Logger.getLogger(Nodo.class.getName()).log(Level.SEVERE, null, ex);
-            }
-        }
-    }
-    
 }
