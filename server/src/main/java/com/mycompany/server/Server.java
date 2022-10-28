@@ -123,7 +123,10 @@ public class Server extends Application {
                      try {
                         String result = MicroServicio(parts[1]);
                         //write object to Socket
+                        
                         // {type of message},{content},{flag},{id_hash}
+                        
+                        
                         oos.writeObject("resultado,"+result+",0,"+parts[3]); 
                         System.out.println("[server] Resultado enviado: " + result);
                         
