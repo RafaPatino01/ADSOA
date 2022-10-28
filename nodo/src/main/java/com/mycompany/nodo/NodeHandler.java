@@ -13,6 +13,8 @@ import java.net.Socket;
 import java.util.ArrayList;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import javafx.application.Platform;
+import javafx.scene.control.TextArea;
 
 /**
  *
@@ -24,16 +26,17 @@ public class NodeHandler implements Runnable {
     private final Socket node_socket;
     private final ObjectOutputStream oos;
     private final ObjectInputStream ois;
+    private TextArea logger = null;
     
     // Constructor
-    public NodeHandler(Socket pSocket, ObjectOutputStream pOOS, ObjectInputStream pOIS) throws IOException
+    public NodeHandler(Socket pSocket, ObjectOutputStream pOOS, ObjectInputStream pOIS, TextArea pLogger) throws IOException
     {
         this.node_socket = pSocket;
         this.oos = pOOS;
         this.ois = pOIS;
+        this.logger = pLogger;
         active_output_streams.add(oos); // add oos a la lista
         active_connections.add(pSocket);
-        
     }
     
     // Runnable logic
@@ -45,7 +48,12 @@ public class NodeHandler implements Runnable {
                 
                 //convert ObjectInputStream object to String
                 String message = (String) ois.readObject();
+                final String tempMessage = message;
+                
                 System.out.println("[nodo] (" + node_socket.getRemoteSocketAddress() + ") Mensaje recibido: " + message);
+                Platform.runLater(() -> {
+                    logger.appendText("[nodo] (" + node_socket.getRemoteSocketAddress() + ") Mensaje recibido: " + tempMessage + "\n");
+                });
                 
                 String parts[] = message.split(",");
                 
@@ -58,6 +66,10 @@ public class NodeHandler implements Runnable {
                         ObjectOutputStream temp_oos = active_output_streams.get(i);
                         temp_oos.writeObject(message);
                         System.out.println("[nodo] Enviando mensaje: " + message + " a " + active_connections.get(i));
+                        final int temp_i = i;
+                        Platform.runLater(() -> {
+                            logger.appendText("[nodo] Enviando mensaje: " + tempMessage + " a " + active_connections.get(temp_i) + "\n");
+                        });
                     }
                 }
                 
@@ -66,7 +78,10 @@ public class NodeHandler implements Runnable {
         }
         catch (IOException e) {
             System.out.println("*[nodo] Conexion finalizada con: " + node_socket.getRemoteSocketAddress());
-
+            Platform.runLater(() -> {
+                logger.appendText("*[nodo] Conexion finalizada con: " + node_socket.getRemoteSocketAddress() + "\n");
+            });
+            
             active_connections.remove(node_socket);
             active_output_streams.remove(oos);
 
