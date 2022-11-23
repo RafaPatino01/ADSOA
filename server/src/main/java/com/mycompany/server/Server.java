@@ -1,7 +1,10 @@
 package com.mycompany.server;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.lang.reflect.Method;
@@ -9,6 +12,13 @@ import java.net.InetAddress;
 import java.net.Socket;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.function.Consumer;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -38,6 +48,8 @@ public class Server extends Application {
     public Label label_puerto;
     public StackPane pane;
     
+    UUID serverID;
+    
     // MAIN THREAD
     public static void main(String args[]) throws IOException, ClassNotFoundException, InterruptedException{
         launch(); //JAVAFX
@@ -45,6 +57,9 @@ public class Server extends Application {
     
     @Override
     public void start(Stage stage) {
+        //Create uuid server
+        serverID = UUID.randomUUID();
+        
         stage.setTitle("SERVIDOR");
         label_puerto = new Label("Socket PORT: XXXX");
         label_puerto.setTranslateX(-50);
@@ -70,88 +85,99 @@ public class Server extends Application {
         return (int) ((Math.random() * (max - min)) + min);
     }
     
-    Thread t = new Thread(() -> {
-        
-        try {
-             // Execute on background
-             host = InetAddress.getLocalHost();
-             System.out.println("[server] Buscando conexión con nodo... ");
-             
-             boolean socket_connection = false;
-             while(!socket_connection){
-                 try {
-                     nodo_port = getRandomNumber(3000,3100);
-                     socket = new Socket(host.getHostName(), nodo_port);
-                     System.out.println("[server] Conexion establecida con nodo: " + Integer.toString(nodo_port));
-                     socket_connection = true;
-
-                     //Objects OI Stream
-                     oos = new ObjectOutputStream(socket.getOutputStream());
-                     ois = new ObjectInputStream(socket.getInputStream());
-
-                     //Indicate that this is a server
-                     oos.writeObject("tipo-server");
-                     
-                     Platform.runLater(() -> {
-                        label_puerto.setText("Socket PORT: " + Integer.toString(nodo_port));
-                    });
-                 }
-                 catch(Exception e){
-                     //nothing happens
-                 }
-             }
-
-             //keep listens indefinitely until receives 'exit' call or program terminates
-             while(true){
-
-                 System.out.println("[server] Esperando un request");
-
-                 //convert ObjectInputStream object to String
-                 String message = (String) ois.readObject();
-
-                 System.out.println("[server] Mensaje recibido: " + message);
-
-                 String parts[] = message.split(","); // {type of message},{content}
-
-                 if(parts[0].equals("operacion")){
-                     System.out.println("[server] Evaluando expresión recibida: " + parts[1]);
-
-                     // solve expression from message
-                     //Expression expression = new ExpressionBuilder(parts[1]).build();
-                     //double result = expression.evaluate();
-                     
-                     try {
-                        String result = MicroServicio(parts[1]);
-                        //write object to Socket
+    Thread t = new Thread(new Runnable() {
+        @Override
+        public void run() {
+            try {
+                // Execute on background
+                host = InetAddress.getLocalHost();
+                System.out.println("[server] Buscando conexión con nodo... ");
+                
+                boolean socket_connection = false;
+                while(!socket_connection){
+                    try {
+                        nodo_port = getRandomNumber(3000,3100);
+                        socket = new Socket(host.getHostName(), nodo_port);
+                        System.out.println("[server] Conexion establecida con nodo: " + Integer.toString(nodo_port));
+                        socket_connection = true;
                         
-                        // {type of message},{content},{flag},{id_hash}
+                        //Objects OI Stream
+                        oos = new ObjectOutputStream(socket.getOutputStream());
+                        ois = new ObjectInputStream(socket.getInputStream());
                         
-                        
-                        oos.writeObject("resultado,"+result+",0,"+parts[3]); 
-                        System.out.println("[server] Resultado enviado: " + result);
+                        //Indicate that this is a server
+                        oos.writeObject("tipo-server");
                         
                         Platform.runLater(() -> {
-                            label.setText(parts[1] + "\n = \n" + result);
+                            label_puerto.setText("Socket PORT: " + Integer.toString(nodo_port));
                         });
-                     }
-                     catch (Exception e){
-                         e.printStackTrace();
-                     }
-                     
-                 }
-
-                 //terminate the server if client sends exit request
-                 if(message.equalsIgnoreCase("exit")) break;
-             }
-             System.out.println("Shutting down Socket server!!");
-             //close resources
-             ois.close();
-             oos.close();
-             socket.close(); 
-        } catch (IOException | ClassNotFoundException  e) {
-            e.printStackTrace();
+                    }
+                    catch(Exception e){
+                        //nothing happens
+                    }
+                }
+                
+                //keep listens indefinitely until receives 'exit' call or program terminates
+                while(true){
+                    
+                    System.out.println("[server] Esperando un request");
+                    
+                    //convert ObjectInputStream object to String
+                    String message = (String) ois.readObject();
+                    
+                    System.out.println("[server] Mensaje recibido: " + message);
+                    
+                    String parts[] = message.split(","); // {type of message},{content},{flag},{id_hash}
+                    
+                    if(parts[0].equals("operacion")){
+                        System.out.println("[server] Evaluando expresión recibida: " + parts[1]);
+                        
+                        // solve expression from message
+                        //Expression expression = new ExpressionBuilder(parts[1]).build();
+                        //double result = expression.evaluate();
+                        
+                        try {
+                            String result = MicroServicio(parts[1]);
+                            //write object to Socket
+                            
+                            // {type of message},{content},{flag},{id_hash}
+                            oos.writeObject("resultado,"+result+",0,"+parts[3]+","+serverID);
+                            System.out.println("[server] Resultado enviado: " + result);
+                            
+                            Platform.runLater(() -> {
+                                label.setText(parts[1] + "\n = \n" + result);
+                            });
+                        }
+                        catch (Exception e){
+                            e.printStackTrace();
+                        }
+                        
+                    }
+                    
+                    
+                    if(parts[0].equals("clonacion") && parts[4].equals(serverID.toString())){
+                        
+                        for(int i = 0; i < Integer.parseInt(parts[1]); i++){
+                        
+                            System.out.println("VAMO A CLONARNO");
+                        
+                            Runtime.getRuntime().exec("/Users/rafaelpatino/Desktop/SERVER/script.sh");
+                        }
+                        
+                    }
+                    
+                    //terminate the server if client sends exit request
+                    if(message.equalsIgnoreCase("exit")) break;
+                }
+                System.out.println("Shutting down Socket server!!");
+                //close resources
+                ois.close();
+                oos.close();
+                socket.close();
+            } catch (IOException | ClassNotFoundException  e) {
+                e.printStackTrace();
+            } 
         }
-        
     });
     
     private String MicroServicio(String pOperacion) throws Exception {
@@ -163,4 +189,22 @@ public class Server extends Application {
         result = (String)subMethod.invoke(objInstance, pOperacion);
         return result;
     }
+    
+    
+    
+    private static class StreamGobbler implements Runnable {
+    private InputStream inputStream;
+    private Consumer<String> consumer;
+
+    public StreamGobbler(InputStream inputStream, Consumer<String> consumer) {
+        this.inputStream = inputStream;
+        this.consumer = consumer;
+    }
+
+    @Override
+    public void run() {
+        new BufferedReader(new InputStreamReader(inputStream)).lines()
+          .forEach(consumer);
+    }
+}
 }

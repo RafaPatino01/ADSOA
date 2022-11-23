@@ -10,7 +10,6 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
-import java.util.ArrayList;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javafx.application.Platform;
@@ -58,7 +57,8 @@ public class NodeHandler implements Runnable {
                 String parts[] = message.split(",");
                 
                 if( Integer.parseInt(parts[2]) < 2){
-                    message = String.join(",", parts[0], parts[1], Integer.toString(Integer.parseInt(parts[2])+1), parts[3]);
+                    // {type of message},{content},{flag},{id_hash},{id_server}
+                    message = String.join(",", parts[0], parts[1], Integer.toString(Integer.parseInt(parts[2])+1), parts[3], parts[4]);
                     // Broadcast to all active clients
                     for (int i = 0; i < active_output_streams.size(); i++) 
                     {
